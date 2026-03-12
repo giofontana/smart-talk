@@ -2,6 +2,7 @@ name: "Smart Talk"
 description: "AI-powered conversation agent with speech-to-text and text-to-speech for Home Assistant"
 version: "1.0.0"
 slug: "smart_talk"
+url: "https://github.com/giofontana/smart-talk"
 init: false
 arch:
   - aarch64
@@ -9,9 +10,9 @@ arch:
   - armhf
   - armv7
 ports:
-  10300/tcp: null   # STT Wyoming port (null = not exposed to host by default, HA maps internally)
-  10301/tcp: null   # TTS Wyoming port
-  8080/tcp: 8080    # Conversation proxy HTTP port
+  10300/tcp: null
+  10301/tcp: null
+  8080/tcp: 8080
 options:
   agent_url: "http://localhost:8765/conversation"
   stt_model: "tiny"
