@@ -20,7 +20,7 @@ logging.basicConfig(
 logger = logging.getLogger("tts_server")
 
 PIPER_VOICES_BASE_URL = (
-    "https://huggingface.co/rhasspy/piper-voices/resolve/main"
+    "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0"
 )
 
 # Audio constants for piper output (22050 Hz, 16-bit mono)
@@ -61,12 +61,18 @@ def _get_config() -> dict:
 # Voice model management
 # ---------------------------------------------------------------------------
 
-def _voice_to_path_parts(voice_name: str) -> tuple[str, str, str]:
-    """Convert 'en_US-lessac-medium' → ('en', 'en_US', 'en_US-lessac-medium')."""
+def _voice_to_path_parts(voice_name: str) -> tuple[str, str, str, str]:
+    """Convert 'en_US-lessac-medium' → ('en', 'en_US', 'lessac', 'medium').
+
+    Piper voices repo (v1.0.0) uses the structure:
+      {lang}/{lang_region}/{speaker}/{quality}/{voice_name}.onnx
+    """
     parts = voice_name.split("-")
     lang_region = parts[0]            # e.g. en_US
     lang = lang_region.split("_")[0]  # e.g. en
-    return lang, lang_region, voice_name
+    speaker = parts[1] if len(parts) > 1 else "default"
+    quality = parts[2] if len(parts) > 2 else "medium"
+    return lang, lang_region, speaker, quality
 
 
 def _ensure_voice_model(model_dir: str, voice_name: str) -> Path:
@@ -81,10 +87,10 @@ def _ensure_voice_model(model_dir: str, voice_name: str) -> Path:
         logger.debug("Voice model already present: %s", onnx_file)
         return onnx_file
 
-    lang, lang_region, _ = _voice_to_path_parts(voice_name)
+    lang, lang_region, speaker, quality = _voice_to_path_parts(voice_name)
 
     for fname in [f"{voice_name}.onnx", f"{voice_name}.onnx.json"]:
-        url = f"{PIPER_VOICES_BASE_URL}/{lang}/{lang_region}/{voice_name}/{fname}"
+        url = f"{PIPER_VOICES_BASE_URL}/{lang}/{lang_region}/{speaker}/{quality}/{fname}"
         dest = model_path / fname
         logger.info("Downloading piper voice file: %s → %s", url, dest)
         try:
