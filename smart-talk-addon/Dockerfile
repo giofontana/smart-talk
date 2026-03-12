@@ -1,14 +1,14 @@
-ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base-python:3.12
+ARG BUILD_FROM=python:3.12-slim-bookworm
 FROM ${BUILD_FROM}
 
 # Install system dependencies
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     supervisor \
     ffmpeg \
     espeak-ng \
-    build-base \
+    build-essential \
     libffi-dev \
-    && rm -rf /var/cache/apk/*
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy and install Python dependencies
 COPY app/requirements.txt /app/requirements.txt
