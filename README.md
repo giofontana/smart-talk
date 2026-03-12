@@ -84,7 +84,7 @@ git clone https://github.com/your-org/smart-talk.git
 cd smart-talk
 
 # Create your local config file
-cp smart-talk-agent/config.example.yaml config.yaml
+cp smart-talk-agent/example-config.yaml config.yaml
 
 # Edit config.yaml — at minimum set ha_token, ha_url, and llm_base_url
 $EDITOR config.yaml
