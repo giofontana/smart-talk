@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import io
 import json
 import logging
 import os
+import tempfile
 from pathlib import Path
 
 logging.basicConfig(
@@ -181,21 +183,34 @@ class WyomingSTTServer:
         loop = asyncio.get_event_loop()
         try:
             model = await self._get_model()
-            segments, info = await loop.run_in_executor(
-                None,
-                lambda: model.transcribe(
-                    io.BytesIO(raw_bytes),
-                    language=language,
-                    beam_size=5,
-                ),
-            )
-            text = " ".join(seg.text.strip() for seg in segments).strip()
-            logger.debug(
-                "Transcription done — detected language: %s (prob=%.2f)",
-                info.language,
-                info.language_probability,
-            )
-            return text
+
+            # Write to a named temp file so ffmpeg can detect the format from
+            # the .wav extension. Passing io.BytesIO directly causes ffmpeg to
+            # see '<none>' as the input name and fail with AVERROR_INVALIDDATA.
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                tmp.write(raw_bytes)
+                tmp_path = tmp.name
+
+            try:
+                segments, info = await loop.run_in_executor(
+                    None,
+                    lambda: model.transcribe(
+                        tmp_path,
+                        language=language,
+                        beam_size=5,
+                    ),
+                )
+                text = " ".join(seg.text.strip() for seg in segments).strip()
+                logger.debug(
+                    "Transcription done — detected language: %s (prob=%.2f)",
+                    info.language,
+                    info.language_probability,
+                )
+                return text
+            finally:
+                with contextlib.suppress(OSError):
+                    os.unlink(tmp_path)
+
         except Exception as exc:
             logger.error("Transcription failed: %s", exc)
             return ""
