@@ -1,0 +1,43 @@
+# Smart Talk AI Agent — Example Configuration
+# Copy this file to config.yaml and adjust values for your environment.
+# Settings can also be overridden via environment variables with the prefix ST_
+# (e.g., ST_LLM_BASE_URL, ST_HA_URL, etc.)
+
+# ── LLM Settings ────────────────────────────────────────────────────────────
+llm_base_url: "http://localhost:11434/v1"   # OpenAI-compatible endpoint (Ollama, LM Studio, OpenAI, etc.)
+llm_api_key: "sk-no-key"                    # API key; use the real key for cloud providers
+llm_model: "gpt-4o-mini"                    # Model name as accepted by the endpoint
+llm_temperature: 0.1                        # Lower = more deterministic; range 0.0–2.0
+llm_max_tokens: 2048                        # Maximum tokens in the LLM response
+
+# ── Home Assistant Settings ──────────────────────────────────────────────────
+ha_url: "http://homeassistant.local:8123"   # Base URL of your HA instance
+ha_token: "YOUR_LONG_LIVED_ACCESS_TOKEN"    # HA → Profile → Long-Lived Access Tokens
+ha_ssl_verify: true                         # Set to false only for self-signed certs in dev
+
+# ── Server Settings ──────────────────────────────────────────────────────────
+server_host: "0.0.0.0"   # Bind address; 0.0.0.0 to accept connections from all interfaces
+server_port: 8765         # HTTP REST port
+log_level: "INFO"         # DEBUG | INFO | WARNING | ERROR
+
+# ── Semantic Search Settings ─────────────────────────────────────────────────
+embedding_model: "all-MiniLM-L6-v2"   # sentence-transformers model used for entity embeddings
+similarity_threshold: 0.35             # Minimum cosine similarity to consider an entity a match
+                                       # Lower = more permissive, higher = stricter matching
+device_refresh_interval: 300           # Seconds between automatic HA entity cache refreshes
+
+# Ambiguity detection: when multiple candidates score similarly, the agent asks
+# the user to clarify which device they meant (or confirm "all of them").
+ambiguity_spread_threshold: 0.08       # Max allowed score spread between top candidates.
+                                       # Smaller = only flag when scores are very close.
+ambiguity_min_matches: 2               # Minimum number of above-threshold candidates
+                                       # required before ambiguity can be triggered.
+
+# ── Translation ───────────────────────────────────────────────────────────────
+# When enabled, entity friendly names are translated to English when the
+# embedding index is built, and user queries are translated to English before
+# searching. This allows devices named in any language and users speaking any
+# language to work correctly with the semantic resolver.
+# Uses the same LLM configured above (llm_base_url / llm_model).
+enable_translation: true               # Set to false for English-only deployments
+                                       # to skip translation overhead.

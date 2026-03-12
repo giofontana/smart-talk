@@ -1,0 +1,36 @@
+# Docker Compose for Smart Talk AI Agent (standalone).
+#
+# The HA Add-on (STT/TTS/conversation-proxy) runs inside Home Assistant
+# Supervisor and is NOT included here. Deploy the add-on separately by
+# side-loading the smart-talk-addon/ repository in the HA Add-on Store.
+#
+# Before starting:
+#   1. Copy smart-talk-agent/config.example.yaml → config.yaml
+#   2. Fill in ST_HA_TOKEN and ST_LLM_BASE_URL / ST_LLM_MODEL below (or in
+#      config.yaml), then run:
+#         docker compose up -d
+
+services:
+  smart-talk-agent:
+    build: ./smart-talk-agent
+    image: smart-talk-agent:latest
+    container_name: smart-talk-agent
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    environment:
+      - ST_HA_URL=http://homeassistant.local:8123
+      - ST_HA_TOKEN=your_long_lived_access_token_here
+      - ST_LLM_BASE_URL=http://your-llm-server:11434/v1
+      - ST_LLM_MODEL=qwen2.5:7b
+      - ST_LLM_API_KEY=sk-no-key
+    volumes:
+      # Mount your local config.yaml (copied from config.example.yaml) into the
+      # container. Environment variables above override any values in the file.
+      - ./config.yaml:/app/config.yaml:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8765/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s

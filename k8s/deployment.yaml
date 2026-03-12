@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smart-talk-agent
+  namespace: smart-talk
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: smart-talk-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: smart-talk-agent
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+
+      containers:
+        - name: smart-talk-agent
+          image: smart-talk-agent:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: websocket
+              containerPort: 8765
+              protocol: TCP
+
+          env:
+            - name: ST_HA_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: smart-talk-config
+                  key: config.yaml
+                  optional: true   # full config is volume-mounted; env vars are per-key overrides
+            - name: ST_HA_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: smart-talk-secrets
+                  key: ha-token
+            - name: ST_LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: smart-talk-secrets
+                  key: llm-api-key
+            # SMART_TALK_CONFIG tells the agent where to find its YAML config file.
+            - name: SMART_TALK_CONFIG
+              value: /app/config/config.yaml
+
+          volumeMounts:
+            - name: config-volume
+              mountPath: /app/config
+              readOnly: true
+
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8765
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8765
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+      volumes:
+        - name: config-volume
+          configMap:
+            name: smart-talk-config

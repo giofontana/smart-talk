@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: smart-talk
+
+commonLabels:
+  app.kubernetes.io/name: smart-talk-agent
+  app.kubernetes.io/part-of: smart-talk
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secret.yaml
+  - deployment.yaml
+  - service.yaml

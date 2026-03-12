@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: smart-talk-config
+  namespace: smart-talk
+data:
+  config.yaml: |
+    # Smart Talk AI Agent — Kubernetes configuration
+    # Non-sensitive settings live here; secrets are injected via Secret below.
+
+    # ── LLM Settings ──────────────────────────────────────────────────────────
+    llm_base_url: "http://ollama.ollama.svc.cluster.local:11434/v1"
+    llm_model: "qwen2.5:7b"
+    llm_temperature: 0.1
+    llm_max_tokens: 2048
+
+    # ── Home Assistant Settings ───────────────────────────────────────────────
+    ha_url: "http://homeassistant.homeassistant.svc.cluster.local:8123"
+    ha_ssl_verify: true
+
+    # ── Server Settings ───────────────────────────────────────────────────────
+    server_host: "0.0.0.0"
+    server_port: 8765
+    log_level: "INFO"
+
+    # ── Semantic Search Settings ──────────────────────────────────────────────
+    embedding_model: "all-MiniLM-L6-v2"
+    similarity_threshold: 0.35
+    device_refresh_interval: 300
