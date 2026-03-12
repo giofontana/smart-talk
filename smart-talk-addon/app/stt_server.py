@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import tempfile
+import wave
 from pathlib import Path
 
 logging.basicConfig(
@@ -180,15 +181,27 @@ class WyomingSTTServer:
         if language == "auto":
             language = None
 
+        # HA's assist pipeline streams raw PCM bytes (no WAV header).
+        # Build a proper WAV file using the format reported in audio-start so
+        # ffmpeg can detect the codec from the file contents.
+        rate = audio_params.get("rate", 16000)
+        width = audio_params.get("width", 2)
+        channels = audio_params.get("channels", 1)
+
+        wav_buf = io.BytesIO()
+        with wave.open(wav_buf, "wb") as wf:
+            wf.setnchannels(channels)
+            wf.setsampwidth(width)
+            wf.setframerate(rate)
+            wf.writeframes(raw_bytes)
+        wav_bytes = wav_buf.getvalue()
+
         loop = asyncio.get_event_loop()
         try:
             model = await self._get_model()
 
-            # Write to a named temp file so ffmpeg can detect the format from
-            # the .wav extension. Passing io.BytesIO directly causes ffmpeg to
-            # see '<none>' as the input name and fail with AVERROR_INVALIDDATA.
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                tmp.write(raw_bytes)
+                tmp.write(wav_bytes)
                 tmp_path = tmp.name
 
             try:
