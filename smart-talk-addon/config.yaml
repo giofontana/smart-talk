@@ -21,7 +21,7 @@ options:
   tts_language: "en"
 schema:
   agent_url: str
-  stt_model: "tiny|base|small|medium|large-v2|large-v3"
+  stt_model: str
   stt_language: str
   tts_voice: str
   tts_language: str
