@@ -12,8 +12,13 @@ from uuid import uuid4
 
 import aiohttp
 from homeassistant.components import conversation
+from homeassistant.components.conversation import (
+    ConversationInput,
+    ConversationResult,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import intent
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -21,11 +26,6 @@ try:
     from homeassistant.components.conversation import MATCH_ALL
 except ImportError:
     MATCH_ALL = "*"  # fallback for older HA versions
-
-from homeassistant.components.conversation import (
-    ConversationInput,
-    ConversationResult,
-)
 
 from .const import CONF_AGENT_NAME, CONF_CONVERSATION_PROXY_URL, DEFAULT_PROXY_URL, DOMAIN
 
@@ -48,13 +48,17 @@ class SmartTalkConversationEntity(conversation.ConversationEntity):
     """Conversation agent that delegates to the Smart Talk AI agent."""
 
     _attr_has_entity_name = True
-    _attr_supported_languages = MATCH_ALL
 
     def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry) -> None:
         self.hass = hass
         self._config_entry = config_entry
         self._attr_name = config_entry.data.get(CONF_AGENT_NAME, "Smart Talk")
         self._attr_unique_id = f"{DOMAIN}_{config_entry.entry_id}"
+
+    @property
+    def supported_languages(self) -> list[str] | str:
+        """Return supported languages — MATCH_ALL means any language."""
+        return MATCH_ALL
 
     @property
     def _proxy_url(self) -> str:
@@ -70,7 +74,7 @@ class SmartTalkConversationEntity(conversation.ConversationEntity):
         text = user_input.text
         language = user_input.language or "en"
 
-        intent_response = conversation.IntentResponse(language=language)
+        intent_response = intent.IntentResponse(language=language)
 
         try:
             http_session = async_get_clientsession(self.hass)
@@ -96,7 +100,7 @@ class SmartTalkConversationEntity(conversation.ConversationEntity):
                 exc.message,
             )
             intent_response.async_set_error(
-                conversation.IntentResponseErrorCode.UNKNOWN,
+                intent.IntentResponseErrorCode.UNKNOWN,
                 f"Smart Talk agent returned an error (HTTP {exc.status}).",
             )
 
@@ -107,7 +111,7 @@ class SmartTalkConversationEntity(conversation.ConversationEntity):
                 session_id,
             )
             intent_response.async_set_error(
-                conversation.IntentResponseErrorCode.UNKNOWN,
+                intent.IntentResponseErrorCode.UNKNOWN,
                 "Cannot connect to the Smart Talk agent. Please check the add-on is running.",
             )
 
@@ -116,7 +120,7 @@ class SmartTalkConversationEntity(conversation.ConversationEntity):
                 "Unexpected error processing conversation for session %s", session_id
             )
             intent_response.async_set_error(
-                conversation.IntentResponseErrorCode.UNKNOWN,
+                intent.IntentResponseErrorCode.UNKNOWN,
                 "An unexpected error occurred while contacting the Smart Talk agent.",
             )
 
