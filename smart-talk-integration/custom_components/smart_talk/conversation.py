@@ -1,8 +1,7 @@
 """Smart Talk conversation platform.
 
 Registers ``SmartTalkConversationEntity`` as a HA Conversation Agent.
-Requests are forwarded via HTTP POST to the Smart Talk add-on's conversation
-proxy, which in turn forwards them to the Smart Talk AI agent via HTTP REST.
+Requests are forwarded via HTTP POST directly to the Smart Talk AI agent.
 """
 
 from __future__ import annotations
@@ -27,7 +26,7 @@ try:
 except ImportError:
     MATCH_ALL = "*"  # fallback for older HA versions
 
-from .const import CONF_AGENT_NAME, CONF_CONVERSATION_PROXY_URL, DEFAULT_PROXY_URL, DOMAIN
+from .const import CONF_AGENT_NAME, CONF_AGENT_URL, DEFAULT_AGENT_URL, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -61,11 +60,10 @@ class SmartTalkConversationEntity(conversation.ConversationEntity):
         return MATCH_ALL
 
     @property
-    def _proxy_url(self) -> str:
-        # Support live options updates — read from entry.options first, fall back to data
+    def _agent_url(self) -> str:
         return (
-            self._config_entry.options.get(CONF_CONVERSATION_PROXY_URL)
-            or self._config_entry.data.get(CONF_CONVERSATION_PROXY_URL, DEFAULT_PROXY_URL)
+            self._config_entry.options.get(CONF_AGENT_URL)
+            or self._config_entry.data.get(CONF_AGENT_URL, DEFAULT_AGENT_URL)
         )
 
     async def async_process(self, user_input: ConversationInput) -> ConversationResult:
@@ -79,7 +77,7 @@ class SmartTalkConversationEntity(conversation.ConversationEntity):
         try:
             http_session = async_get_clientsession(self.hass)
             async with http_session.post(
-                self._proxy_url,
+                self._agent_url,
                 json={"session_id": session_id, "text": text, "language": language},
                 timeout=aiohttp.ClientTimeout(total=60),
             ) as resp:
@@ -94,7 +92,7 @@ class SmartTalkConversationEntity(conversation.ConversationEntity):
 
         except aiohttp.ClientResponseError as exc:
             _LOGGER.error(
-                "Smart Talk proxy returned HTTP %d for session %s: %s",
+                "Smart Talk agent returned HTTP %d for session %s: %s",
                 exc.status,
                 session_id,
                 exc.message,
@@ -106,13 +104,13 @@ class SmartTalkConversationEntity(conversation.ConversationEntity):
 
         except aiohttp.ClientConnectorError:
             _LOGGER.error(
-                "Cannot connect to Smart Talk proxy at %s (session %s)",
-                self._proxy_url,
+                "Cannot connect to Smart Talk agent at %s (session %s)",
+                self._agent_url,
                 session_id,
             )
             intent_response.async_set_error(
                 intent.IntentResponseErrorCode.UNKNOWN,
-                "Cannot connect to the Smart Talk agent. Please check the add-on is running.",
+                "Cannot connect to the Smart Talk agent. Please check the agent is running.",
             )
 
         except Exception:  # noqa: BLE001

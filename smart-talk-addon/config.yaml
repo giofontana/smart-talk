@@ -10,7 +10,6 @@ arch:
 ports:
   10300/tcp: 10300
   10301/tcp: 10301
-  8080/tcp: 8080
 options:
   agent_url: "http://localhost:8765/conversation"
   stt_model: "tiny"

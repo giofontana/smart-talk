@@ -1,7 +1,7 @@
 """Smart Talk — Home Assistant Custom Integration.
 
 Registers the Smart Talk AI agent as a HA Conversation Agent by connecting
-to the Smart Talk add-on's conversation proxy HTTP endpoint.
+directly to the Smart Talk AI agent's HTTP endpoint.
 """
 
 from __future__ import annotations

@@ -15,36 +15,32 @@ Smart Talk turns Home Assistant's voice pipeline into a fully local, context-awa
 │  │   Mic → STT ──► Conversation Agent ──► TTS → Speaker  │    │
 │  └──────────┬──────────────┬───────────────┬─────────────┘    │
 │             │              │               │                   │
-│  ┌──────────▼──────────────▼───────────────▼─────────────┐    │
-│  │              Smart Talk Add-on (HA Supervisor)         │    │
-│  │                                                        │    │
-│  │  ┌──────────────────┐   ┌──────────────────────────┐  │    │
-│  │  │  Wyoming STT     │   │  Conversation Proxy       │  │    │
-│  │  │  (faster-whisper)│   │  HTTP :8080/conversation  │  │    │
-│  │  └──────────────────┘   └────────────┬─────────────┘  │    │
-│  │  ┌──────────────────┐                │ HTTP REST       │    │
-│  │  │  Wyoming TTS     │                │                 │    │
-│  │  │  (piper)         │                │                 │    │
-│  │  └──────────────────┘                │                 │    │
-│  └─────────────────────────────────────┼───────────────── ┘   │
-└────────────────────────────────────────┼────────────────────── ┘
-                                         │ http://agent:8765/conversation
-                   ┌─────────────────────▼──────────────────────┐
-                   │         Smart Talk Agent (Docker / K8s)     │
-                   │                                             │
-                   │  FastAPI REST server                        │
-                   │  LangChain ReAct agent                      │
-                   │  ┌──────────┐  ┌───────────────────────┐   │
-                   │  │ Semantic │  │ Tools                 │   │
-                   │  │ resolver │  │  lights / climate /   │   │
-                   │  │ (embeds) │  │  covers / scenes /    │   │
-                   │  └──────────┘  │  sensors / switches   │   │
-                   │                └──────────┬────────────┘   │
-                   └───────────────────────────┼────────────────┘
-                                               │ WebSocket API
-                   ┌───────────────────────────▼────────────────┐
-                   │          Home Assistant WebSocket API       │
-                   └────────────────────────────────────────────┘
+│  ┌──────────▼──────────────┼───────────────▼─────────────┐    │
+│  │       Smart Talk Add-on (HA Supervisor)                │    │
+│  │                         │                              │    │
+│  │  ┌──────────────────┐   │              ┌────────────┐  │    │
+│  │  │  Wyoming STT     │   │              │ Wyoming TTS│  │    │
+│  │  │  (faster-whisper)│   │              │  (piper)   │  │    │
+│  │  └──────────────────┘   │              └────────────┘  │    │
+│  └─────────────────────────┼──────────────────────────────┘   │
+└────────────────────────────┼─────────────────────────────────── ┘
+                             │ HTTP POST http://agent:8765/conversation
+             ┌───────────────▼────────────────────────────┐
+             │         Smart Talk Agent (Docker / K8s)     │
+             │                                             │
+             │  FastAPI REST server                        │
+             │  LangChain ReAct agent                      │
+             │  ┌──────────┐  ┌───────────────────────┐   │
+             │  │ Semantic │  │ Tools                 │   │
+             │  │ resolver │  │  lights / climate /   │   │
+             │  │ (embeds) │  │  covers / scenes /    │   │
+             │  └──────────┘  │  sensors / switches   │   │
+             │                └──────────┬────────────┘   │
+             └───────────────────────────┼────────────────┘
+                                         │ WebSocket API
+             ┌───────────────────────────▼────────────────┐
+             │          Home Assistant WebSocket API       │
+             └────────────────────────────────────────────┘
 ```
 
 ---
@@ -54,8 +50,8 @@ Smart Talk turns Home Assistant's voice pipeline into a fully local, context-awa
 | Component | Description |
 |---|---|
 | **smart-talk-agent** | Standalone Python service. FastAPI REST server, LangChain ReAct agent, sentence-transformers entity resolver, HA WebSocket client. |
-| **smart-talk-addon** | HA Supervisor Add-on. Bundles faster-whisper (STT), piper (TTS) via the Wyoming protocol, and the conversation proxy that bridges HTTP ↔ HTTP REST to the agent. |
-| **smart-talk-integration** | HA Custom Integration. Registers as a HA Conversation Agent and forwards requests to the add-on's HTTP endpoint. |
+| **smart-talk-addon** | HA Supervisor Add-on. Bundles faster-whisper (STT) and piper (TTS) via the Wyoming protocol. |
+| **smart-talk-integration** | HA Custom Integration. Registers as a HA Conversation Agent and forwards requests directly to the agent's HTTP endpoint. |
 | **docker-compose.yml** | Deploys the agent standalone for non-Kubernetes setups. |
 | **k8s/** | Kustomize manifests for Kubernetes deployment of the agent. |
 
@@ -122,8 +118,9 @@ Then restart Home Assistant.
 1. Go to **Settings → Devices & Services → + Add Integration**.
 2. Search for **Smart Talk** and click it.
 3. Enter:
-   - **Conversation proxy URL**: `http://<addon-host>:8080/conversation`
+   - **Agent URL**: `http://<agent-host>:8765/conversation`
    - **Agent name**: e.g. `Smart Talk`
+   - **Add-on host**: hostname/IP of the HA add-on (for STT/TTS, defaults to `localhost`)
 4. Click **Submit**.
 5. Go to **Settings → Voice Assistants**, select your assistant, and set the **Conversation Agent** to **Smart Talk**.
 
@@ -258,7 +255,7 @@ The Smart Talk agent exposes a REST endpoint at `POST http://<host>:8765/convers
 { "session_id": "uuid", "text": "Done, kitchen lights are off.", "language": "en" }
 ```
 
-The conversation proxy in the add-on makes a simple HTTP POST to this endpoint and forwards the response back to HA.
+The Smart Talk integration connects directly to the agent's REST endpoint and forwards the response back to HA.
 
 ### Agent → HA: WebSocket API
 
