@@ -14,33 +14,21 @@ Smart Talk turns Home Assistant's voice pipeline into a fully local, context-awa
 │  │              HA Voice Pipeline                         │    │
 │  │   Mic → STT ──► Conversation Agent ──► TTS → Speaker  │    │
 │  └──────────┬──────────────┬───────────────┬─────────────┘    │
-│             │              │               │                   │
-│  ┌──────────▼──────────────┼───────────────▼─────────────┐    │
-│  │       Smart Talk Add-on (HA Supervisor)                │    │
-│  │                         │                              │    │
-│  │  ┌──────────────────┐   │              ┌────────────┐  │    │
-│  │  │  Wyoming STT     │   │              │ Wyoming TTS│  │    │
-│  │  │  (faster-whisper)│   │              │  (piper)   │  │    │
-│  │  └──────────────────┘   │              └────────────┘  │    │
-│  └─────────────────────────┼──────────────────────────────┘   │
-└────────────────────────────┼─────────────────────────────────── ┘
-                             │ HTTP POST http://agent:8765/conversation
-             ┌───────────────▼────────────────────────────┐
-             │         Smart Talk Agent (Docker / K8s)     │
-             │                                             │
-             │  FastAPI REST server                        │
-             │  LangChain ReAct agent                      │
-             │  ┌──────────┐  ┌───────────────────────┐   │
-             │  │ Semantic │  │ Tools                 │   │
-             │  │ resolver │  │  lights / climate /   │   │
-             │  │ (embeds) │  │  covers / scenes /    │   │
-             │  └──────────┘  │  sensors / switches   │   │
-             │                └──────────┬────────────┘   │
-             └───────────────────────────┼────────────────┘
-                                         │ WebSocket API
-             ┌───────────────────────────▼────────────────┐
-             │          Home Assistant WebSocket API       │
-             └────────────────────────────────────────────┘
+│             │ Wyoming      │ Smart Talk    │ Wyoming           │
+│             │ integration  │ integration   │ integration       │
+└─────────────┼──────────────┼───────────────┼───────────────── ┘
+              │              │               │
+   ┌──────────▼──────┐       │    ┌──────────▼──────┐
+   │ wyoming-faster- │       │    │  wyoming-piper  │
+   │ whisper         │       │    │  (podman)       │
+   │ (podman)        │       │    │  :10200         │
+   │ :10300          │       │    └─────────────────┘
+   └─────────────────┘       │
+                             │ HTTP POST /conversation
+              ┌──────────────▼──────────────────────────┐
+              │       Smart Talk Agent (podman / K8s)    │
+              │  FastAPI · LangChain · :8765             │
+              └──────────────────────────────────────────┘
 ```
 
 ---
@@ -50,8 +38,9 @@ Smart Talk turns Home Assistant's voice pipeline into a fully local, context-awa
 | Component | Description |
 |---|---|
 | **smart-talk-agent** | Standalone Python service. FastAPI REST server, LangChain ReAct agent, sentence-transformers entity resolver, HA WebSocket client. |
-| **smart-talk-addon** | HA Supervisor Add-on. Bundles faster-whisper (STT) and piper (TTS) via the Wyoming protocol. |
-| **smart-talk-integration** | HA Custom Integration. Registers as a HA Conversation Agent and forwards requests directly to the agent's HTTP endpoint. |
+| **smart-talk-integration** | HA Custom Integration. Registers Smart Talk as a HA Conversation Agent and forwards requests directly to the agent. |
+| **wyoming-faster-whisper** | Standalone STT service (podman). Registered in HA via the built-in Wyoming integration. |
+| **wyoming-piper** | Standalone TTS service (podman). Registered in HA via the built-in Wyoming integration. |
 | **docker-compose.yml** | Deploys the agent standalone for non-Kubernetes setups. |
 | **k8s/** | Kustomize manifests for Kubernetes deployment of the agent. |
 
@@ -93,16 +82,45 @@ curl http://localhost:8765/health
 # → {"status": "ok"}
 ```
 
-### Step 2 — Install the HA Add-on
+### Step 2 — Run STT (faster-whisper) with Podman
 
-1. In Home Assistant go to **Settings → Add-ons → Add-on Store**.
-2. Click the three-dot menu **⋮ → Repositories**.
-3. Add the URL of this repository.
-4. Find **Smart Talk** in the store and click **Install**.
-5. In the add-on **Configuration** tab set `agent_url` to `http://<agent-host>:8765/conversation`.
-6. Click **Start**.
+```bash
+mkdir -p ~/.local/share/wyoming/whisper
+podman run -d --name wyoming-whisper \
+  --userns=keep-id \
+  -p 10300:10300 \
+  -v ~/.local/share/wyoming/whisper:/data:z \
+  -e HF_HOME=/data \
+  docker.io/rhasspy/wyoming-whisper \
+  --model tiny-int8 --language en --uri tcp://0.0.0.0:10300 \
+  --data-dir /data --download-dir /data
+```
 
-### Step 3 — Install the Custom Integration
+Change `--model` to `base-int8`, `small-int8`, or `medium-int8` for better accuracy.  
+Omit `--language en` to enable auto-detection.
+
+### Step 3 — Run TTS (piper) with Podman
+
+```bash
+mkdir -p ~/.local/share/wyoming/piper
+podman run -d --name wyoming-piper \
+  --userns=keep-id \
+  -p 10200:10200 \
+  -v ~/.local/share/wyoming/piper:/data:z \
+  docker.io/rhasspy/wyoming-piper \
+  --voice en_US-lessac-medium --uri tcp://0.0.0.0:10200 \
+  --data-dir /data --download-dir /data
+```
+
+### Step 4 — Register Wyoming services in HA
+
+For each service (STT and TTS):
+1. Go to **Settings → Devices & Services → + Add Integration**.
+2. Search for **Wyoming Protocol** and click it.
+3. Enter the host (`localhost` or the machine's IP) and port (`10300` for STT, `10200` for TTS).
+4. Click **Submit** — HA will detect whether it's an STT or TTS service automatically.
+
+### Step 5 — Install the Custom Integration
 
 Copy (or symlink) the integration folder into your HA config:
 
@@ -113,16 +131,18 @@ cp -r smart-talk-integration/custom_components/smart_talk \
 
 Then restart Home Assistant.
 
-### Step 4 — Configure the Integration in the HA UI
+### Step 6 — Configure the Integration in the HA UI
 
 1. Go to **Settings → Devices & Services → + Add Integration**.
 2. Search for **Smart Talk** and click it.
 3. Enter:
    - **Agent URL**: `http://<agent-host>:8765/conversation`
    - **Agent name**: e.g. `Smart Talk`
-   - **Add-on host**: hostname/IP of the HA add-on (for STT/TTS, defaults to `localhost`)
 4. Click **Submit**.
-5. Go to **Settings → Voice Assistants**, select your assistant, and set the **Conversation Agent** to **Smart Talk**.
+5. Go to **Settings → Voice Assistants**, select your assistant, and set:
+   - **Conversation Agent** → **Smart Talk**
+   - **Speech-to-text** → the faster-whisper entity (added via Wyoming)
+   - **Text-to-speech** → the piper entity (added via Wyoming)
 
 ---
 
@@ -149,12 +169,9 @@ All environment variables use the prefix `ST_`.
 | `similarity_threshold` | `ST_SIMILARITY_THRESHOLD` | `0.35` | Min cosine similarity for entity match |
 | `device_refresh_interval` | `ST_DEVICE_REFRESH_INTERVAL` | `300` | Seconds between HA entity cache refreshes |
 
-### Add-on options (`/data/options.json` via HA UI)
+### Add-on options
 
-| Option | Default | Description |
-|---|---|---|
-| `agent_url` | `http://localhost:8765/conversation` | HTTP REST URL of the Smart Talk agent |
-| `agent_timeout` | `60` | Seconds to wait for an agent response |
+Not applicable — STT and TTS are provided by standalone `wyoming-faster-whisper` and `wyoming-piper` podman containers configured via their CLI arguments. See **Quick Start** above for the recommended options.
 
 ---
 
@@ -267,14 +284,14 @@ The Smart Talk agent communicates with Home Assistant exclusively through the **
 
 This provides lower latency than REST and enables future features like real-time state-change subscriptions.
 
-### Wyoming Protocol
+### Wyoming Protocol (STT / TTS)
 
-The add-on exposes two Wyoming services to HA:
+STT and TTS are provided by standalone services registered in HA via the built-in **Wyoming** integration:
 
-- **STT** (`faster-whisper`) — receives raw PCM audio frames, returns transcription.
-- **TTS** (`piper`) — receives text, returns synthesised audio.
+- **`wyoming-faster-whisper`** — TCP server on port `10300`. Receives raw PCM audio from HA, returns transcription.
+- **`wyoming-piper`** — TCP server on port `10200`. Receives text from HA, returns synthesised audio.
 
-Both are registered automatically in HA when the add-on starts, making them selectable in the Voice Pipeline configuration.
+Both run as podman containers (see Quick Start). HA discovers their capabilities automatically when you add them via **Settings → Devices & Services → Wyoming Protocol**.
 
 ### Semantic Entity Resolution
 
