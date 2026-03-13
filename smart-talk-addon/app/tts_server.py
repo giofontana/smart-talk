@@ -4,11 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import io
 import json
 import logging
 import os
-import struct
 import urllib.request
 from pathlib import Path
 
@@ -131,22 +129,6 @@ async def _read_event(reader: asyncio.StreamReader) -> tuple[str, dict]:
 # Audio helpers
 # ---------------------------------------------------------------------------
 
-def _read_wav_pcm(wav_bytes: bytes) -> bytes:
-    """Strip WAV header and return raw PCM bytes."""
-    buf = io.BytesIO(wav_bytes)
-    # Minimal WAV parsing: skip RIFF header to find 'data' chunk
-    buf.seek(12)  # skip RIFF + filesize + WAVE
-    while True:
-        chunk_id = buf.read(4)
-        if len(chunk_id) < 4:
-            break
-        (chunk_size,) = struct.unpack("<I", buf.read(4))
-        if chunk_id == b"data":
-            return buf.read(chunk_size)
-        buf.seek(chunk_size, 1)
-    return wav_bytes  # fallback: return as-is
-
-
 def _chunk_pcm(pcm: bytes, chunk_samples: int, sample_width: int) -> list[bytes]:
     chunk_bytes = chunk_samples * sample_width
     return [pcm[i: i + chunk_bytes] for i in range(0, len(pcm), chunk_bytes)]
@@ -156,19 +138,13 @@ def _chunk_pcm(pcm: bytes, chunk_samples: int, sample_width: int) -> list[bytes]
 # TTS synthesis
 # ---------------------------------------------------------------------------
 
-def _synthesize_sync(text: str, onnx_path: Path, config_path: Path) -> bytes:
-    """Blocking piper synthesis. Returns raw WAV bytes."""
+def _synthesize_sync(text: str, onnx_path: Path, config_path: Path) -> tuple[bytes, int]:
+    """Blocking piper synthesis. Returns (raw_pcm_bytes, sample_rate)."""
     from piper import PiperVoice  # noqa: PLC0415
 
     voice = PiperVoice.load(str(onnx_path), config_path=str(config_path))
-    buf = io.BytesIO()
-    with wave.open(buf, "wb") as wav_file:
-        voice.synthesize(text, wav_file)
-    return buf.getvalue()
-
-
-# Import wave at module level for the above function
-import wave  # noqa: E402
+    raw_audio = b"".join(voice.synthesize_stream_raw(text))
+    return raw_audio, voice.config.sample_rate
 
 
 # ---------------------------------------------------------------------------
@@ -251,7 +227,7 @@ class WyomingTTSServer:
 
         loop = asyncio.get_event_loop()
         try:
-            wav_bytes = await loop.run_in_executor(
+            pcm, sample_rate = await loop.run_in_executor(
                 None,
                 _synthesize_sync,
                 text,
@@ -268,11 +244,10 @@ class WyomingTTSServer:
             await _send_event(writer, "audio-stop", {})
             return
 
-        pcm = _read_wav_pcm(wav_bytes)
         chunks = _chunk_pcm(pcm, AUDIO_CHUNK_SAMPLES, PIPER_SAMPLE_WIDTH)
 
         await _send_event(writer, "audio-start", {
-            "rate": PIPER_SAMPLE_RATE,
+            "rate": sample_rate,
             "width": PIPER_SAMPLE_WIDTH,
             "channels": PIPER_CHANNELS,
         })
@@ -280,7 +255,7 @@ class WyomingTTSServer:
         for chunk in chunks:
             encoded = base64.b64encode(chunk).decode()
             await _send_event(writer, "audio-chunk", {
-                "rate": PIPER_SAMPLE_RATE,
+                "rate": sample_rate,
                 "width": PIPER_SAMPLE_WIDTH,
                 "channels": PIPER_CHANNELS,
                 "audio": encoded,
