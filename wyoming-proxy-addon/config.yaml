@@ -1,35 +1,29 @@
-name: "Wyoming Polyglot Proxy"
-description: "Wyoming protocol proxy with automatic language detection and voice mapping"
+name: Wyoming Polyglot Proxy
+description: Wyoming protocol proxy with automatic language detection and voice mapping for multilingual TTS
 version: "0.1.0"
-slug: "wyoming-polyglot-proxy"
-init: false
+slug: wyoming-polyglot-proxy
+url: https://github.com/giofontana/smart-talk/tree/main/wyoming-proxy-addon
 arch:
   - aarch64
   - amd64
   - armhf
   - armv7
   - i386
-
-# Ports exposed to Home Assistant
 ports:
-  10300/tcp: 10300  # STT proxy port
-  10200/tcp: 10200  # TTS proxy port
-
-# Add-on options (configured via HA UI)
+  10300/tcp: 10300
+  10200/tcp: 10200
 options:
-  whisper_url: "tcp://192.168.1.100:10300"
-  piper_url: "tcp://192.168.1.100:10200"
+  whisper_url: tcp://192.168.1.100:10300
+  piper_url: tcp://192.168.1.100:10200
   voice_mapping:
-    en: "en_US-lessac-medium"
-    es: "es_ES-mls-medium"
-    it: "it_IT-riccardo-x_low"
-    pt: "pt_BR-faber-medium"
-    fr: "fr_FR-siwis-medium"
-  log_level: "info"
-
-# Schema for options validation
+    en: en_US-lessac-medium
+    es: es_ES-mls-medium
+    it: it_IT-riccardo-x_low
+    pt: pt_BR-faber-medium
+    fr: fr_FR-siwis-medium
+  log_level: info
 schema:
   whisper_url: str
   piper_url: str
-  voice_mapping: "dict?"
-  log_level: "list(debug|info|warning|error)?"
+  voice_mapping: dict?
+  log_level: list(debug|info|warning|error)?
