@@ -8,7 +8,6 @@ from urllib.parse import urlparse
 import langdetect
 from langdetect import DetectorFactory
 from wyoming.event import async_read_event, async_write_event
-from wyoming.server import AsyncTcpServer
 from wyoming.tts import Synthesize
 
 # Set seed for consistent results
@@ -43,10 +42,11 @@ class TTSProxy:
         """Start the TTS proxy server."""
         _LOGGER.info(f"TTS proxy listening on {self.listen_host}:{self.listen_port}")
         _LOGGER.info(f"Voice mapping: {self.voice_mapping}")
-        server = AsyncTcpServer.create(
-            self.listen_host, self.listen_port, self._handle_client
+        server = await asyncio.start_server(
+            self._handle_client, self.listen_host, self.listen_port
         )
-        await server.run()
+        async with server:
+            await server.serve_forever()
 
     def _detect_language(self, text: str) -> str:
         """Detect language from text."""

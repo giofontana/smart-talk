@@ -4,8 +4,6 @@ import asyncio
 import logging
 from urllib.parse import urlparse
 
-from wyoming.server import AsyncTcpServer
-
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -20,10 +18,11 @@ class STTProxy:
     async def run(self):
         """Start the STT proxy server."""
         _LOGGER.info(f"STT proxy listening on {self.listen_host}:{self.listen_port}")
-        server = AsyncTcpServer.create(
-            self.listen_host, self.listen_port, self._handle_client
+        server = await asyncio.start_server(
+            self._handle_client, self.listen_host, self.listen_port
         )
-        await server.run()
+        async with server:
+            await server.serve_forever()
 
     async def _handle_client(self, reader, writer):
         """Handle incoming STT request from HA - forward to Whisper."""
