@@ -18,14 +18,15 @@ options:
   whisper_url: tcp://192.168.1.100:10300
   piper_url: tcp://192.168.1.100:10200
   voice_mapping:
-    en: en_US-lessac-medium
-    es: es_ES-mls-medium
-    it: it_IT-riccardo-x_low
-    pt: pt_BR-faber-medium
-    fr: fr_FR-siwis-medium
+    - "en:en_US-lessac-medium"
+    - "es:es_ES-mls-medium"
+    - "it:it_IT-riccardo-x_low"
+    - "pt:pt_BR-faber-medium"
+    - "fr:fr_FR-siwis-medium"
   log_level: info
 schema:
   whisper_url: str
   piper_url: str
-  voice_mapping: dict?
+  voice_mapping:
+    - str
   log_level: list(debug|info|warning|error)?
