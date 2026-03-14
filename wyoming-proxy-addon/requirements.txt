@@ -1,0 +1,2 @@
+wyoming==1.5.3
+langdetect==1.0.9

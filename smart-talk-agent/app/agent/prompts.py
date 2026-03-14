@@ -45,6 +45,69 @@ Rules you must always follow:
 """
 
 
-def build_prompt() -> str:
-    """Return the system prompt string used by the LangChain agent."""
-    return SYSTEM_PROMPT
+def build_prompt(language: str = "en") -> str:
+    """Return the system prompt string used by the LangChain agent.
+
+    Args:
+        language: ISO 639-1 language code (e.g., "en", "es", "it", "pt").
+                  The prompt will instruct the LLM to respond in this language.
+
+    Returns:
+        The complete system prompt with language-specific instructions.
+    """
+    # Map common language codes to human-readable names
+    language_names = {
+        "en": "English",
+        "es": "Spanish",
+        "it": "Italian",
+        "pt": "Portuguese",
+        "fr": "French",
+        "de": "German",
+        "nl": "Dutch",
+        "pl": "Polish",
+        "ru": "Russian",
+        "zh-cn": "Chinese (Simplified)",
+        "zh-tw": "Chinese (Traditional)",
+        "ja": "Japanese",
+        "ko": "Korean",
+        "ar": "Arabic",
+        "hi": "Hindi",
+        "tr": "Turkish",
+        "sv": "Swedish",
+        "da": "Danish",
+        "no": "Norwegian",
+        "fi": "Finnish",
+        "cs": "Czech",
+        "sk": "Slovak",
+        "ro": "Romanian",
+        "bg": "Bulgarian",
+        "el": "Greek",
+        "he": "Hebrew",
+        "th": "Thai",
+        "vi": "Vietnamese",
+        "id": "Indonesian",
+        "ms": "Malay",
+        "uk": "Ukrainian",
+        "ca": "Catalan",
+        "hr": "Croatian",
+        "sr": "Serbian",
+        "sl": "Slovenian",
+        "et": "Estonian",
+        "lv": "Latvian",
+        "lt": "Lithuanian",
+    }
+
+    language_name = language_names.get(language.lower(), language.upper())
+
+    # For English, use the original prompt as-is
+    if language.lower() == "en":
+        return SYSTEM_PROMPT
+
+    # For other languages, append explicit language instruction
+    language_instruction = f"""
+
+## CRITICAL: Response Language
+The user is speaking {language_name}. You MUST respond EXCLUSIVELY in {language_name}.
+Do NOT respond in English or any other language. ALL of your responses must be in {language_name}."""
+
+    return SYSTEM_PROMPT + language_instruction

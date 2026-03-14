@@ -10,6 +10,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 
 from app.agent.core import SmartTalkAgent
+from app.agent.language_detector import get_detector
 from app.agent.tools.registry import ToolRegistry
 from app.config import Settings
 from app.ha.client import HAClient
@@ -223,15 +224,33 @@ async def conversation(request: ConversationRequest) -> ConversationResponse:
 
     This is the primary endpoint called by the Smart Talk HA Add-on's
     conversation proxy.
+
+    The language is automatically detected from the user's input text.
+    If the input is too short for reliable detection, the system falls back
+    to the session's previously detected language, then to the language
+    provided in the request, and finally to English.
     """
+    # Detect language from user input
+    detector = get_detector()
+    detected_language, confidence = detector.detect(
+        text=request.text,
+        session_id=request.session_id,
+        fallback_language=request.language if request.language != "en" else None,
+    )
+
     logger.info(
-        "Conversation request session=%s lang=%s text=%r",
+        "Conversation request session=%s detected_lang=%s (conf=%.2f) input_lang=%s text=%r",
         request.session_id,
+        detected_language,
+        confidence,
         request.language,
         request.text[:80],
     )
+
     try:
-        reply_text = await agent.chat(request.session_id, request.text)
+        reply_text = await agent.chat(
+            request.session_id, request.text, language=detected_language
+        )
     except Exception as exc:
         logger.error(
             "Agent error for session=%s: %s", request.session_id, exc, exc_info=True
@@ -239,12 +258,15 @@ async def conversation(request: ConversationRequest) -> ConversationResponse:
         raise HTTPException(status_code=500, detail="Internal agent error") from exc
 
     logger.info(
-        "Conversation response session=%s text=%r", request.session_id, reply_text[:80]
+        "Conversation response session=%s lang=%s text=%r",
+        request.session_id,
+        detected_language,
+        reply_text[:80],
     )
     return ConversationResponse(
         session_id=request.session_id,
         text=reply_text,
-        language=request.language,
+        language=detected_language,  # Return the detected language
     )
 
 

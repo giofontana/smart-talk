@@ -1,0 +1,8 @@
+# Testing framework
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+pytest-timeout>=2.2.0
+pytest-cov>=4.1.0
+
+# Mocking
+pytest-mock>=3.12.0

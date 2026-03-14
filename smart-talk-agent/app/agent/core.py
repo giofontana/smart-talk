@@ -62,9 +62,12 @@ class SmartTalkAgent:
         # Track known session IDs for monitoring
         self._sessions: set[str] = set()
 
+        # Track current language per session
+        self._current_language: dict[str, str] = {}
+
     # ── Public API ────────────────────────────────────────────────────────────
 
-    async def chat(self, session_id: str, message: str) -> str:
+    async def chat(self, session_id: str, message: str, language: str = "en") -> str:
         """Process a user message and return the agent's reply.
 
         Args:
@@ -72,6 +75,8 @@ class SmartTalkAgent:
                         Used as LangGraph ``thread_id`` so each session has
                         its own isolated conversation history.
             message:    The user's natural-language input.
+            language:   ISO 639-1 language code for the response (e.g., "en", "es").
+                        Defaults to "en" (English).
 
         Returns:
             Agent response string.
@@ -79,10 +84,50 @@ class SmartTalkAgent:
         self._sessions.add(session_id)
         config = {"configurable": {"thread_id": session_id}}
 
-        logger.info("session=%s user=%r", session_id, message)
+        # Track language changes for this session
+        previous_language = self._current_language.get(session_id, "en")
+        self._current_language[session_id] = language
+
+        # Log language info
+        if language != previous_language:
+            logger.info(
+                "session=%s language changed: %s → %s",
+                session_id,
+                previous_language,
+                language,
+            )
+
+        logger.info("session=%s lang=%s user=%r", session_id, language, message)
+
+        # For non-English languages, prepend a language instruction to ensure
+        # the LLM responds in the correct language
+        if language.lower() != "en":
+            language_names = {
+                "es": "Spanish",
+                "it": "Italian",
+                "pt": "Portuguese",
+                "fr": "French",
+                "de": "German",
+                "nl": "Dutch",
+                "pl": "Polish",
+                "ru": "Russian",
+                "zh-cn": "Chinese",
+                "ja": "Japanese",
+                "ko": "Korean",
+                "ar": "Arabic",
+                "hi": "Hindi",
+                "tr": "Turkish",
+            }
+            language_name = language_names.get(language.lower(), language.upper())
+            message_with_instruction = (
+                f"[Respond in {language_name}] {message}"
+            )
+        else:
+            message_with_instruction = message
+
         try:
             result = await self._agent.ainvoke(
-                {"messages": [("human", message)]},
+                {"messages": [("human", message_with_instruction)]},
                 config=config,
             )
             # result["messages"] is a list of BaseMessage; last is the AI reply
@@ -92,7 +137,18 @@ class SmartTalkAgent:
             return str(response)
         except Exception as exc:
             logger.error("session=%s agent error: %s", session_id, exc, exc_info=True)
-            return "I'm sorry, I encountered an error while processing your request."
+            # Return error message in the user's language
+            error_messages = {
+                "es": "Lo siento, encontré un error al procesar tu solicitud.",
+                "it": "Mi dispiace, ho riscontrato un errore durante l'elaborazione della tua richiesta.",
+                "pt": "Desculpe, encontrei um erro ao processar sua solicitação.",
+                "fr": "Désolé, j'ai rencontré une erreur lors du traitement de votre demande.",
+                "de": "Entschuldigung, beim Verarbeiten Ihrer Anfrage ist ein Fehler aufgetreten.",
+            }
+            return error_messages.get(
+                language.lower(),
+                "I'm sorry, I encountered an error while processing your request.",
+            )
 
     def get_sessions(self) -> list[str]:
         """Return all active session IDs."""

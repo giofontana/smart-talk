@@ -2,6 +2,9 @@
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["."]
+filterwarnings = [
+    "ignore::DeprecationWarning:websockets.connection",
+]
 
 [tool.coverage.run]
 source = ["app"]
