@@ -1,0 +1,11 @@
+build_from:
+  aarch64: ghcr.io/home-assistant/aarch64-base-python:3.11-alpine3.18
+  amd64: ghcr.io/home-assistant/amd64-base-python:3.11-alpine3.18
+  armhf: ghcr.io/home-assistant/armhf-base-python:3.11-alpine3.18
+  armv7: ghcr.io/home-assistant/armv7-base-python:3.11-alpine3.18
+  i386: ghcr.io/home-assistant/i386-base-python:3.11-alpine3.18
+labels:
+  org.opencontainers.image.title: Wyoming Polyglot Proxy
+  org.opencontainers.image.description: Wyoming protocol proxy with automatic language detection and voice mapping for multilingual TTS
+  org.opencontainers.image.source: https://github.com/giofontana/smart-talk
+  org.opencontainers.image.licenses: Apache-2.0

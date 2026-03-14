@@ -3,6 +3,8 @@ description: Wyoming protocol proxy with automatic language detection and voice 
 version: "0.1.0"
 slug: wyoming-polyglot-proxy
 url: https://github.com/giofontana/smart-talk/tree/main/wyoming-proxy-addon
+startup: application
+init: false
 arch:
   - aarch64
   - amd64
