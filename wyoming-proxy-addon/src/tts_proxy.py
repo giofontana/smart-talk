@@ -76,6 +76,7 @@ class TTSProxy:
 
     async def _handle_client(self, reader, writer):
         """Handle incoming TTS request from HA."""
+        upstream_writer = None
         try:
             # Parse upstream URL
             upstream = urlparse(self.upstream_url)
@@ -85,40 +86,44 @@ class TTSProxy:
                 upstream.hostname, upstream.port or 10200
             )
 
-            # Read events from HA
-            while True:
-                event = await async_read_event(reader)
-                if event is None:
-                    break
+            async def forward_to_piper():
+                """HA → Piper: intercept Synthesize events to inject selected voice."""
+                while True:
+                    event = await async_read_event(reader)
+                    if event is None:
+                        break
 
-                # Intercept synthesize events to inject voice
-                if Synthesize.is_type(event):
-                    synthesize = Synthesize.from_event(event)
-                    text = synthesize.text
-                    _LOGGER.debug(f"TTS request: {text[:100]}")
+                    if Synthesize.is_type(event):
+                        synthesize = Synthesize.from_event(event)
+                        text = synthesize.text
+                        _LOGGER.debug(f"TTS request: {text[:100]}")
 
-                    # Detect language
-                    language = self._detect_language(text)
+                        language = self._detect_language(text)
+                        voice_name = self._select_voice(language)
 
-                    # Select voice
-                    voice_name = self._select_voice(language)
+                        modified = Synthesize(
+                            text=text, voice=SynthesizeVoice(name=voice_name)
+                        )
+                        await async_write_event(modified.event(), upstream_writer)
+                    else:
+                        await async_write_event(event, upstream_writer)
 
-                    # Rebuild Synthesize with selected voice and forward to Piper
-                    modified = Synthesize(text=text, voice=SynthesizeVoice(name=voice_name))
-                    await async_write_event(modified.event(), upstream_writer)
-                else:
-                    # Forward other events unchanged
-                    await async_write_event(event, upstream_writer)
+            async def forward_to_ha():
+                """Piper → HA: forward audio responses as-is."""
+                while True:
+                    response = await async_read_event(upstream_reader)
+                    if response is None:
+                        break
+                    await async_write_event(response, writer)
 
-            # Forward responses from Piper back to HA
-            while True:
-                response = await async_read_event(upstream_reader)
-                if response is None:
-                    break
-                await async_write_event(response, writer)
+            # Both directions must run concurrently: HA waits for audio while
+            # Piper waits for the request — sequential loops would deadlock.
+            await asyncio.gather(forward_to_piper(), forward_to_ha())
 
         except Exception as e:
             _LOGGER.error(f"TTS proxy error: {e}")
         finally:
             writer.close()
             await writer.wait_closed()
+            if upstream_writer is not None and not upstream_writer.is_closing():
+                upstream_writer.close()
