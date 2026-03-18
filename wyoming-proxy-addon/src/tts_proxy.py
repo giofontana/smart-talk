@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 import langdetect
 from langdetect import DetectorFactory
 from wyoming.event import async_read_event, async_write_event
-from wyoming.tts import Synthesize
+from wyoming.tts import Synthesize, SynthesizeVoice
 
 # Set seed for consistent results
 DetectorFactory.seed = 0
@@ -92,8 +92,9 @@ class TTSProxy:
                     break
 
                 # Intercept synthesize events to inject voice
-                if isinstance(event, Synthesize):
-                    text = event.text
+                if Synthesize.is_type(event):
+                    synthesize = Synthesize.from_event(event)
+                    text = synthesize.text
                     _LOGGER.debug(f"TTS request: {text[:100]}")
 
                     # Detect language
@@ -102,22 +103,19 @@ class TTSProxy:
                     # Select voice
                     voice_name = self._select_voice(language)
 
-                    # Modify event to include voice
-                    event_dict = event.event()
-                    event_dict["data"]["voice"] = {"name": voice_name}
-
-                    # Forward modified event to Piper
-                    await async_write_event(event_dict, upstream_writer)
+                    # Rebuild Synthesize with selected voice and forward to Piper
+                    modified = Synthesize(text=text, voice=SynthesizeVoice(name=voice_name))
+                    await async_write_event(modified.event(), upstream_writer)
                 else:
                     # Forward other events unchanged
-                    await async_write_event(event.event(), upstream_writer)
+                    await async_write_event(event, upstream_writer)
 
             # Forward responses from Piper back to HA
             while True:
                 response = await async_read_event(upstream_reader)
                 if response is None:
                     break
-                await async_write_event(response.event(), writer)
+                await async_write_event(response, writer)
 
         except Exception as e:
             _LOGGER.error(f"TTS proxy error: {e}")

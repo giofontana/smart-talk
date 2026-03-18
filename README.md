@@ -92,7 +92,7 @@ podman run -d --name wyoming-whisper \
   -v ~/.local/share/wyoming/whisper:/data:z \
   -e HF_HOME=/data \
   docker.io/rhasspy/wyoming-whisper \
-  --model tiny-int8 --language en --uri tcp://0.0.0.0:10300 \
+  --model small-int8 --uri tcp://0.0.0.0:10300 \
   --data-dir /data --download-dir /data
 ```
 
