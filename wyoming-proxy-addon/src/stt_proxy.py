@@ -4,6 +4,10 @@ import asyncio
 import logging
 from urllib.parse import urlparse
 
+from wyoming.asr import Transcribe, Transcript
+from wyoming.audio import AudioChunk, AudioStart, AudioStop
+from wyoming.event import async_read_event, async_write_event
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -26,35 +30,60 @@ class STTProxy:
 
     async def _handle_client(self, reader, writer):
         """Handle incoming STT request from HA - forward to Whisper."""
+        client = writer.get_extra_info("peername", ("?", "?"))
+        _LOGGER.info(f"[STT] New connection from {client[0]}:{client[1]}")
         try:
-            # Parse upstream URL
             upstream = urlparse(self.upstream_url)
-
-            # Connect to upstream Whisper
             upstream_reader, upstream_writer = await asyncio.open_connection(
                 upstream.hostname, upstream.port or 10300
             )
 
-            # Bidirectional forwarding: HA <-> Whisper
             await asyncio.gather(
-                self._forward(reader, upstream_writer, "HA→Whisper"),
-                self._forward(upstream_reader, writer, "Whisper→HA"),
+                self._forward_to_whisper(reader, upstream_writer),
+                self._forward_to_ha(upstream_reader, writer),
             )
 
         except Exception as e:
-            _LOGGER.error(f"STT proxy error: {e}")
+            _LOGGER.error(f"[STT] Proxy error: {e}")
         finally:
+            _LOGGER.info(f"[STT] Connection closed from {client[0]}:{client[1]}")
             writer.close()
             await writer.wait_closed()
 
-    async def _forward(self, reader, writer, direction: str):
-        """Forward data from reader to writer."""
+    async def _forward_to_whisper(self, reader, writer):
+        """HA → Whisper: log notable events, forward everything."""
+        chunk_count = 0
         try:
             while True:
-                data = await reader.read(8192)
-                if not data:
+                event = await async_read_event(reader)
+                if event is None:
                     break
-                writer.write(data)
-                await writer.drain()
+                if Transcribe.is_type(event):
+                    transcribe = Transcribe.from_event(event)
+                    _LOGGER.info(
+                        f"[STT] Transcribe request — language hint: {transcribe.language or 'none'}"
+                    )
+                elif AudioStart.is_type(event):
+                    chunk_count = 0
+                    _LOGGER.debug("[STT] AudioStart received")
+                elif AudioChunk.is_type(event):
+                    chunk_count += 1
+                elif AudioStop.is_type(event):
+                    _LOGGER.info(f"[STT] AudioStop received — forwarded {chunk_count} chunks to Whisper")
+                await async_write_event(event, writer)
         except Exception as e:
-            _LOGGER.debug(f"Forward {direction} closed: {e}")
+            _LOGGER.debug(f"[STT] HA→Whisper closed: {e}")
+
+    async def _forward_to_ha(self, reader, writer):
+        """Whisper → HA: log transcript result, forward everything."""
+        try:
+            while True:
+                event = await async_read_event(reader)
+                if event is None:
+                    break
+                if Transcript.is_type(event):
+                    transcript = Transcript.from_event(event)
+                    _LOGGER.info(f"[STT] Transcript result: '{transcript.text}'")
+                await async_write_event(event, writer)
+        except Exception as e:
+            _LOGGER.debug(f"[STT] Whisper→HA closed: {e}")

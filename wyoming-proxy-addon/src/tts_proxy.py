@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 
 import langdetect
 from langdetect import DetectorFactory
+from wyoming.audio import AudioChunk, AudioStart, AudioStop
 from wyoming.event import async_read_event, async_write_event
 from wyoming.tts import Synthesize, SynthesizeVoice
 
@@ -76,12 +77,11 @@ class TTSProxy:
 
     async def _handle_client(self, reader, writer):
         """Handle incoming TTS request from HA."""
+        client = writer.get_extra_info("peername", ("?", "?"))
+        _LOGGER.info(f"[TTS] New connection from {client[0]}:{client[1]}")
         upstream_writer = None
         try:
-            # Parse upstream URL
             upstream = urlparse(self.upstream_url)
-
-            # Connect to upstream Piper
             upstream_reader, upstream_writer = await asyncio.open_connection(
                 upstream.hostname, upstream.port or 10200
             )
@@ -96,24 +96,37 @@ class TTSProxy:
                     if Synthesize.is_type(event):
                         synthesize = Synthesize.from_event(event)
                         text = synthesize.text
-                        _LOGGER.debug(f"TTS request: {text[:100]}")
+                        _LOGGER.info(f"[TTS] Synthesize request — text: '{text[:120]}'")
 
                         language = self._detect_language(text)
                         voice_name = self._select_voice(language)
+                        _LOGGER.info(
+                            f"[TTS] Detected language: '{language}' → Voice: '{voice_name}'"
+                        )
 
                         modified = Synthesize(
                             text=text, voice=SynthesizeVoice(name=voice_name)
                         )
                         await async_write_event(modified.event(), upstream_writer)
                     else:
+                        _LOGGER.debug(f"[TTS] Forwarding event to Piper: {event.type}")
                         await async_write_event(event, upstream_writer)
 
             async def forward_to_ha():
                 """Piper → HA: forward audio responses as-is."""
+                chunk_count = 0
                 while True:
                     response = await async_read_event(upstream_reader)
                     if response is None:
                         break
+                    if AudioStart.is_type(response):
+                        _LOGGER.info("[TTS] AudioStart received from Piper")
+                    elif AudioChunk.is_type(response):
+                        chunk_count += 1
+                    elif AudioStop.is_type(response):
+                        _LOGGER.info(
+                            f"[TTS] AudioStop received from Piper — forwarded {chunk_count} chunks to HA"
+                        )
                     await async_write_event(response, writer)
 
             # Both directions must run concurrently: HA waits for audio while
@@ -121,8 +134,9 @@ class TTSProxy:
             await asyncio.gather(forward_to_piper(), forward_to_ha())
 
         except Exception as e:
-            _LOGGER.error(f"TTS proxy error: {e}")
+            _LOGGER.error(f"[TTS] Proxy error: {e}")
         finally:
+            _LOGGER.info(f"[TTS] Connection closed from {client[0]}:{client[1]}")
             writer.close()
             await writer.wait_closed()
             if upstream_writer is not None and not upstream_writer.is_closing():
